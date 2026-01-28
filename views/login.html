@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0b7dda;
+        }
+        .message {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .error {
+            background-color: #f44336;
+            color: white;
+        }
+        .success {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .info {
+            background-color: #2196F3;
+            color: white;
+        }
+        .links {
+            text-align: center;
+            margin-top: 15px;
+        }
+        #token2FASection {
+            display: none;
+        }
+        .attempts-warning {
+            background-color: #ff9800;
+            color: white;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Iniciar Sesión</h1>
+    
+    <div id="message"></div>
+    
+    <!-- Formulario de credenciales -->
+    <form id="loginForm" style="display: block;">
+        <div class="form-group">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Contraseña:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        
+        <button type="submit">Continuar</button>
+    </form>
+    
+    <!-- Formulario de 2FA (se muestra después) -->
+    <div id="token2FASection">
+        <div class="message info">
+            Introduce el código de 6 dígitos de tu aplicación de autenticación
+        </div>
+        
+        <form id="token2FAForm">
+            <div class="form-group">
+                <label for="token2FA">Código 2FA:</label>
+                <input type="text" id="token2FA" maxlength="6" placeholder="000000" 
+                       style="font-size: 24px; text-align: center; letter-spacing: 5px;" required>
+            </div>
+            
+            <button type="submit">Verificar</button>
+            <button type="button" onclick="cancelar()" style="background-color: #757575; margin-top: 10px;">
+                Cancelar
+            </button>
+        </form>
+    </div>
+    
+    <div class="links">
+        <a href="/register">¿No tienes cuenta? Regístrate</a> | 
+        <a href="/">Volver al inicio</a>
+    </div>
+    
+    <script>
+        let tempUserId = null;
+        
+        // Login con usuario y contraseña
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const messageDiv = document.getElementById('message');
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (data.requires2FA) {
+                        // Necesita 2FA
+                        tempUserId = data.tempUserId;
+                        document.getElementById('loginForm').style.display = 'none';
+                        document.getElementById('token2FASection').style.display = 'block';
+                        messageDiv.innerHTML = '';
+                        document.getElementById('token2FA').focus();
+                    } else {
+                        // Login exitoso sin 2FA
+                        messageDiv.innerHTML = '<div class="message success">' + data.message + '</div>';
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 1000);
+                    }
+                } else {
+                    messageDiv.innerHTML = '<div class="message error">' + data.error + '</div>';
+                }
+            } catch (error) {
+                messageDiv.innerHTML = '<div class="message error">Error de conexión</div>';
+            }
+        });
+        
+        // Verificar código 2FA
+        document.getElementById('token2FAForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const token = document.getElementById('token2FA').value;
+            const messageDiv = document.getElementById('message');
+            
+            if (token.length !== 6) {
+                messageDiv.innerHTML = '<div class="message error">El código debe tener 6 dígitos</div>';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/login/verify-2fa', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ token, tempUserId })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    messageDiv.innerHTML = '<div class="message success">' + data.message + '</div>';
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1000);
+                } else {
+                    messageDiv.innerHTML = '<div class="message error">' + data.error + '</div>';
+                    
+                    if (data.attemptsLeft !== undefined) {
+                        messageDiv.innerHTML += `<div class="attempts-warning">Intentos restantes: ${data.attemptsLeft}</div>`;
+                    }
+                    
+                    if (data.blocked) {
+                        setTimeout(() => {
+                            cancelar();
+                        }, 2000);
+                    } else {
+                        document.getElementById('token2FA').value = '';
+                        document.getElementById('token2FA').focus();
+                    }
+                }
+            } catch (error) {
+                messageDiv.innerHTML = '<div class="message error">Error de conexión</div>';
+            }
+        });
+        
+        function cancelar() {
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('token2FASection').style.display = 'none';
+            document.getElementById('message').innerHTML = '';
+            document.getElementById('token2FA').value = '';
+            tempUserId = null;
+        }
+    </script>
+</body>
+</html>

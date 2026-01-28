@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .card {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #2196F3;
+            color: white;
+        }
+        .btn-success {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #f44336;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #757575;
+            color: white;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-enabled {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .status-disabled {
+            background-color: #f44336;
+            color: white;
+        }
+        #qrSection {
+            text-align: center;
+        }
+        #qrcode {
+            margin: 20px auto;
+        }
+        .verify-section {
+            margin-top: 20px;
+        }
+        input[type="text"] {
+            padding: 8px;
+            width: 150px;
+            font-size: 16px;
+            text-align: center;
+        }
+        .message {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .error {
+            background-color: #f44336;
+            color: white;
+        }
+        .success {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Dashboard</h1>
+        <button class="btn-secondary" onclick="logout()">Cerrar Sesión</button>
+    </div>
+
+    <div class="card">
+        <h2>Información de usuario</h2>
+        <p><strong>Email:</strong> <span id="userEmail"></span></p>
+        <p><strong>Estado 2FA:</strong> <span id="status2FA" class="status"></span></p>
+    </div>
+
+    <div class="card">
+        <h2>Autenticación de dos factores (2FA)</h2>
+        <div id="2faControls"></div>
+        <div id="message"></div>
+    </div>
+
+    <script>
+        let userData = null;
+
+        // Cargar información del usuario
+        async function loadUserInfo() {
+            try {
+                const response = await fetch('/api/user-info');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    userData = data;
+                    document.getElementById('userEmail').textContent = data.email;
+                    
+                    const statusSpan = document.getElementById('status2FA');
+                    if (data.is_2fa_enabled) {
+                        statusSpan.textContent = 'ACTIVADO';
+                        statusSpan.className = 'status status-enabled';
+                        show2FAControls(true);
+                    } else {
+                        statusSpan.textContent = 'DESACTIVADO';
+                        statusSpan.className = 'status status-disabled';
+                        show2FAControls(false);
+                    }
+                } else {
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                window.location.href = '/login';
+            }
+        }
+
+        function show2FAControls(isEnabled) {
+            const controls = document.getElementById('2faControls');
+            
+            if (isEnabled) {
+                controls.innerHTML = `
+                    <p>El 2FA está activado en tu cuenta. Necesitarás tu aplicación de autenticación para iniciar sesión.</p>
+                    <button class="btn-danger" onclick="disable2FA()">Desactivar 2FA</button>
+                `;
+            } else {
+                controls.innerHTML = `
+                    <p>Protege tu cuenta activando la autenticación de dos factores.</p>
+                    <button class="btn-success" onclick="setup2FA()">Activar 2FA</button>
+                    <div id="qrSection" style="display: none;">
+                        <h3>Escanea este código QR</h3>
+                        <p>Usa Google Authenticator, Authy o similar para escanear:</p>
+                        <div id="qrcode"></div>
+                        <div class="verify-section">
+                            <p>Introduce el código de 6 dígitos de tu aplicación:</p>
+                            <input type="text" id="verifyCode" maxlength="6" placeholder="000000">
+                            <button class="btn-primary" onclick="verifyAndEnable2FA()">Verificar y Activar</button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        async function setup2FA() {
+            try {
+                const response = await fetch('/api/2fa/setup', { method: 'POST' });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('qrSection').style.display = 'block';
+                    document.getElementById('qrcode').innerHTML = `<img src="${data.qrCode}" alt="QR Code">`;
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error al configurar 2FA', 'error');
+            }
+        }
+
+        async function verifyAndEnable2FA() {
+            const code = document.getElementById('verifyCode').value;
+            
+            if (code.length !== 6) {
+                showMessage('El código debe tener 6 dígitos', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/2fa/verify-setup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: code })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showMessage(data.message, 'success');
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error al verificar el código', 'error');
+            }
+        }
+
+        async function disable2FA() {
+            if (!confirm('¿Estás seguro de que quieres desactivar el 2FA?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/2fa/disable', { method: 'POST' });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showMessage(data.message, 'success');
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error al desactivar 2FA', 'error');
+            }
+        }
+
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="message ${type}">${text}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        function logout() {
+            window.location.href = '/logout';
+        }
+
+        // Cargar info al inicio
+        loadUserInfo();
+    </script>
+</body>
+</html>
