@@ -54,6 +54,13 @@
             margin-top: 15px;
         }
     </style>
+    
+       <!-- CookieConsent CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3/build/cookieconsent.min.css">
+    
+    <!-- Script externo bloqueado (Lodash) - NO se cargará hasta aceptar -->
+    <script type="text/plain" data-cookiecategory="analytics" 
+            src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
 </head>
 <body>
     <h1>Registro de usuario</h1>
@@ -123,5 +130,56 @@
             }
         });
     </script>
-</body>
+   <script src="https://cdn.jsdelivr.net/npm/cookieconsent@3/build/cookieconsent.min.js"></script>
+    
+    <script>
+        window.addEventListener('load', function() {
+            window.cookieconsent.initialise({
+                palette: {
+                    popup: {
+                        background: "#237afc"
+                    },
+                    button: {
+                        background: "#fff",
+                        text: "#237afc"
+                    }
+                },
+                theme: "classic",
+                type: "opt-in",
+                content: {
+                    message: "Esta aplicación usa cookies para mejorar tu experiencia.",
+                    dismiss: "Rechazar",
+                    allow: "Aceptar",
+                    link: "Saber más",
+                    href: "#"
+                },
+                onStatusChange: function(status) {
+                    console.log('Estado cookies:', status);
+                    if (this.hasConsented()) {
+                        // Activar scripts externos
+                        activarScriptsExternos();
+                    }
+                },
+                onInitialise: function(status) {
+                    if (this.hasConsented()) {
+                        activarScriptsExternos();
+                    }
+                }
+            });
+            
+            function activarScriptsExternos() {
+                // Activar scripts bloqueados
+                var scripts = document.querySelectorAll('script[type="text/plain"][data-cookiecategory="analytics"]');
+                scripts.forEach(function(script) {
+                    var newScript = document.createElement('script');
+                    newScript.src = script.src;
+                    newScript.type = 'text/javascript';
+                    document.head.appendChild(newScript);
+                    console.log('✅ Script externo activado:', script.src);
+                });
+            }
+            
+            console.log('✅ CookieConsent inicializado');
+        });
+    </script>
 </html>
